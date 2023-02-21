@@ -16,22 +16,16 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.linalg;
+package org.apache.flink.ml.util;
 
-import java.io.Serializable;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonParser;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 
-/** A matrix of double values. */
-public interface Matrix extends Serializable {
-
-    /** Gets number of rows. */
-    int numRows();
-
-    /** Gets number of columns. */
-    int numCols();
-
-    /** Gets value of the (i,j) element. */
-    double get(int i, int j);
-
-    /** Converts the instance to a dense matrix. */
-    DenseMatrix toDense();
+/**
+ * Utility methods for reading and writing stages. Methods in this class would not rely on Flink
+ * runtime.
+ */
+public class JsonUtils {
+    public static final ObjectMapper OBJECT_MAPPER =
+            new ObjectMapper().enable(JsonParser.Feature.ALLOW_COMMENTS);
 }

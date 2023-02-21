@@ -16,27 +16,10 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.param;
+package org.apache.flink.ml.servable.types;
 
-import org.apache.flink.ml.util.ReadWriteUtils;
+import org.apache.flink.annotation.PublicEvolving;
 
-import java.io.IOException;
-
-/** Class for the array parameter. */
-public class ArrayArrayParam<T> extends Param<T[][]> {
-
-    public ArrayArrayParam(
-            String name,
-            Class<T[][]> clazz,
-            String description,
-            T[][] defaultValue,
-            ParamValidator<T[][]> validator) {
-        super(name, clazz, description, defaultValue, validator);
-    }
-
-    @Override
-    public T[][] jsonDecode(Object json) throws IOException {
-        String jsonStr = ReadWriteUtils.OBJECT_MAPPER.writeValueAsString(json);
-        return ReadWriteUtils.OBJECT_MAPPER.readValue(jsonStr, clazz);
-    }
-}
+/** This class describes the data type of a value. */
+@PublicEvolving
+public abstract class DataType {}

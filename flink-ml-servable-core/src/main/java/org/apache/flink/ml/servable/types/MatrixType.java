@@ -16,28 +16,24 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.param;
+package org.apache.flink.ml.servable.types;
 
-import org.apache.flink.ml.util.ReadWriteUtils;
+import org.apache.flink.annotation.PublicEvolving;
 
-import java.io.IOException;
+/**
+ * A DataType representing a map where all keys have the same BasicType and all values have the same
+ * BasicType.
+ */
+@PublicEvolving
+public final class MatrixType extends DataType {
 
-/** Class for the array parameter. */
-public class ArrayParam<T> extends Param<T[]> {
+    private final BasicType elementType;
 
-    public ArrayParam(
-            String name,
-            Class<T[]> clazz,
-            String description,
-            T[] defaultValue,
-            ParamValidator<T[]> validator) {
-        super(name, clazz, description, defaultValue, validator);
+    public MatrixType(BasicType elementType) {
+        this.elementType = elementType;
     }
 
-    @Override
-    public T[] jsonDecode(Object json) throws IOException {
-        // Converts Object Mapper's default ArrayList<T> to T[].
-        String jsonStr = ReadWriteUtils.OBJECT_MAPPER.writeValueAsString(json);
-        return ReadWriteUtils.OBJECT_MAPPER.readValue(jsonStr, clazz);
+    public BasicType getElementType() {
+        return elementType;
     }
 }

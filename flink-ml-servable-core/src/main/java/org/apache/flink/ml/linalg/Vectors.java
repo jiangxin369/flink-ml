@@ -18,33 +18,19 @@
 
 package org.apache.flink.ml.linalg;
 
-import org.apache.flink.api.common.typeinfo.TypeInfo;
-import org.apache.flink.ml.linalg.typeinfo.VectorTypeInfoFactory;
+import org.apache.flink.annotation.PublicEvolving;
 
-import java.io.Serializable;
+/** Utility methods for instantiating Vector. */
+@PublicEvolving
+public class Vectors {
 
-/** A vector of double values. */
-@TypeInfo(VectorTypeInfoFactory.class)
-public interface Vector extends Serializable {
+    /** Creates a dense vector from its values. */
+    public static DenseVector dense(double... values) {
+        return new DenseVector(values);
+    }
 
-    /** Gets the size of the vector. */
-    int size();
-
-    /** Gets the value of the ith element. */
-    double get(int i);
-
-    /** Sets the value of the ith element. */
-    void set(int i, double value);
-
-    /** Converts the instance to a double array. */
-    double[] toArray();
-
-    /** Converts the instance to a dense vector. */
-    DenseVector toDense();
-
-    /** Converts the instance to a sparse vector. */
-    SparseVector toSparse();
-
-    /** Makes a deep copy of the vector. */
-    Vector clone();
+    /** Creates a sparse vector from its values. */
+    public static SparseVector sparse(int size, int[] indices, double[] values) {
+        return new SparseVector(size, indices, values);
+    }
 }

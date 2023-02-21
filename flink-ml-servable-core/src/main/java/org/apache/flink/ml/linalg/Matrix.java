@@ -18,16 +18,23 @@
 
 package org.apache.flink.ml.linalg;
 
-/** Utility methods for instantiating Vector. */
-public class Vectors {
+import org.apache.flink.annotation.PublicEvolving;
 
-    /** Creates a dense vector from its values. */
-    public static DenseVector dense(double... values) {
-        return new DenseVector(values);
-    }
+import java.io.Serializable;
 
-    /** Creates a sparse vector from its values. */
-    public static SparseVector sparse(int size, int[] indices, double[] values) {
-        return new SparseVector(size, indices, values);
-    }
+/** A matrix of double values. */
+@PublicEvolving
+public interface Matrix extends Serializable {
+
+    /** Gets number of rows. */
+    int numRows();
+
+    /** Gets number of columns. */
+    int numCols();
+
+    /** Gets value of the (i,j) element. */
+    double get(int i, int j);
+
+    /** Converts the instance to a dense matrix. */
+    DenseMatrix toDense();
 }
