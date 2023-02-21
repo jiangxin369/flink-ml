@@ -35,9 +35,12 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
 
+import org.apache.commons.lang3.SerializationUtils;
+
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.util.Random;
 
 /**
@@ -46,7 +49,7 @@ import java.util.Random;
  * <p>This class also provides methods to convert model data from Table to Datastream, and classes
  * to save/load model data.
  */
-public class LogisticRegressionModelData {
+public class LogisticRegressionModelData implements Serializable {
 
     public DenseVector coefficient;
     public long modelVersion;
@@ -118,6 +121,11 @@ public class LogisticRegressionModelData {
             serializer.serialize(modelData.coefficient, dataOutputViewStreamWrapper);
             dataOutputViewStreamWrapper.writeLong(modelData.modelVersion);
         }
+    }
+
+    public byte[] serialize() {
+        byte[] data = SerializationUtils.serialize(this);
+        return data;
     }
 
     /** Data decoder for {@link LogisticRegression} and {@link OnlineLogisticRegression}. */

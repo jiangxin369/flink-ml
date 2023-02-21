@@ -30,6 +30,7 @@ import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.param.Param;
+import org.apache.flink.ml.servable.classification.logisticregression.LogisticRegressionModelServable;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -120,6 +121,10 @@ public class LogisticRegressionModel
                 ReadWriteUtils.loadModelData(
                         tEnv, path, new LogisticRegressionModelData.ModelDataDecoder());
         return model.setModelData(modelDataTable);
+    }
+
+    public static LogisticRegressionModelServable loadServable(String path) throws IOException {
+        return LogisticRegressionModelServable.load(path);
     }
 
     @Override
