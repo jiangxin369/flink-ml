@@ -26,8 +26,7 @@ import org.apache.flink.ml.builder.PipelineModel;
 import org.apache.flink.ml.servable.api.DataFrame;
 import org.apache.flink.ml.servable.api.Row;
 import org.apache.flink.ml.servable.builder.PipelineModelServable;
-import org.apache.flink.ml.servable.types.BasicType;
-import org.apache.flink.ml.servable.types.ScalarType;
+import org.apache.flink.ml.servable.types.DataTypes;
 import org.apache.flink.ml.util.TestUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -146,7 +145,7 @@ public class PipelineTest extends AbstractTestBase {
         DataFrame input =
                 new DataFrame(
                         Arrays.asList("input"),
-                        Arrays.asList(new ScalarType(BasicType.INT)),
+                        Arrays.asList(DataTypes.INT),
                         Arrays.asList(
                                 new Row(Arrays.asList(1)),
                                 new Row(Arrays.asList(2)),
@@ -157,7 +156,7 @@ public class PipelineTest extends AbstractTestBase {
         DataFrame expectedOutput =
                 new DataFrame(
                         Arrays.asList("input"),
-                        Arrays.asList(new ScalarType(BasicType.INT)),
+                        Arrays.asList(DataTypes.INT),
                         Arrays.asList(
                                 new Row(Arrays.asList(61)),
                                 new Row(Arrays.asList(62)),

@@ -90,7 +90,7 @@ public class DataFrame {
      * @throws IllegalArgumentException if the number of values is different from the number of
      *     rows.
      */
-    public DataFrame addColumn(String columnName, DataType dataType, List<Object> values) {
+    public DataFrame addColumn(String columnName, DataType dataType, List<?> values) {
         if (values.size() != rows.size()) {
             throw new RuntimeException(
                     "The number of values is different from the number of rows.");
@@ -99,7 +99,7 @@ public class DataFrame {
         dataTypes.add(dataType);
 
         int rowSize = -1;
-        Iterator<Object> iter = values.iterator();
+        Iterator<?> iter = values.iterator();
         for (Row row : rows) {
             if (rowSize < 0) {
                 rowSize = row.size();

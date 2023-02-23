@@ -23,7 +23,7 @@ import org.apache.flink.ml.common.param.HasPredictionCol;
 import org.apache.flink.ml.common.param.HasRawPredictionCol;
 
 /**
- * Params for {@link LogisticRegressionModel}.
+ * Params for LogisticRegressionModel.
  *
  * @param <T> The class type of this instance.
  */

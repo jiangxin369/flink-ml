@@ -20,6 +20,7 @@ package org.apache.flink.ml.servable.api;
 
 import org.apache.flink.annotation.PublicEvolving;
 
+import java.io.IOException;
 import java.io.InputStream;
 
 /**
@@ -31,7 +32,8 @@ import java.io.InputStream;
 public interface ModelServable<T extends ModelServable<T>> extends TransformerServable<T> {
 
     /** Sets model data using the serialized model data from the given input stream. */
-    default T setModelData(InputStream modelData) {
+    default T setModelData(InputStream... modelDataInputs)
+            throws IOException, ClassNotFoundException {
         throw new UnsupportedOperationException("this operation is not supported");
     }
 }

@@ -26,8 +26,7 @@ import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.servable.api.DataFrame;
 import org.apache.flink.ml.servable.api.Row;
 import org.apache.flink.ml.servable.api.TransformerServable;
-import org.apache.flink.ml.servable.types.BasicType;
-import org.apache.flink.ml.servable.types.ScalarType;
+import org.apache.flink.ml.servable.types.DataTypes;
 import org.apache.flink.ml.util.FileUtils;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ServableUtils;
@@ -39,7 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Defines a few Servable subclasses to be used in unit tests. */
+/** Defines Servable subclasses to be used in unit tests. */
 public class ExampleServables {
 
     /**
@@ -66,10 +65,7 @@ public class ExampleServables {
                 int originValue = (Integer) row.get(0);
                 outputRows.add(new Row(Arrays.asList(originValue + delta)));
             }
-            return new DataFrame(
-                    Arrays.asList(COL_NAME),
-                    Arrays.asList(new ScalarType(BasicType.INT)),
-                    outputRows);
+            return new DataFrame(Arrays.asList(COL_NAME), Arrays.asList(DataTypes.INT), outputRows);
         }
 
         @Override
