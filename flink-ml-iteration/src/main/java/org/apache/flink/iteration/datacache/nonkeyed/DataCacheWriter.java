@@ -156,7 +156,6 @@ public class DataCacheWriter<T> {
             if (segment.getFsSize() > 0) {
                 continue;
             }
-
             SegmentReader<T> reader = new MemorySegmentReader<>(serializer, segment, 0);
             SegmentWriter<T> writer = new FileSegmentWriter<>(serializer, segment.getPath());
             while (reader.hasNext()) {
