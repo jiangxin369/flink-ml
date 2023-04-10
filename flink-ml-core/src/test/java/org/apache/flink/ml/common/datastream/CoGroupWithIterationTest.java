@@ -60,319 +60,314 @@ import java.util.Random;
 
 import static org.junit.Assert.assertEquals;
 
-/**
- * Tests the {@link DataStreamUtils}.
- */
+/** Tests the {@link DataStreamUtils}. */
 public class CoGroupWithIterationTest {
-	private StreamExecutionEnvironment env;
+    private StreamExecutionEnvironment env;
 
-	@Before
-	public void before() {
-		Configuration config = new Configuration();
-		config.set(HeartbeatManagerOptions.HEARTBEAT_TIMEOUT, 5000000L);
-		config.set(ExecutionCheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH, true);
-		env = StreamExecutionEnvironment.getExecutionEnvironment(config);
-		env.getConfig().enableObjectReuse();
-		env.setRestartStrategy(RestartStrategies.noRestart());
-		env.setParallelism(4);
-		env.enableCheckpointing(100);
-		env.setRestartStrategy(RestartStrategies.noRestart());
-	}
+    @Before
+    public void before() {
+        Configuration config = new Configuration();
+        config.set(HeartbeatManagerOptions.HEARTBEAT_TIMEOUT, 5000000L);
+        config.set(ExecutionCheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH, true);
+        env = StreamExecutionEnvironment.getExecutionEnvironment(config);
+        env.getConfig().enableObjectReuse();
+        env.setRestartStrategy(RestartStrategies.noRestart());
+        env.setParallelism(4);
+        env.enableCheckpointing(100);
+        env.setRestartStrategy(RestartStrategies.noRestart());
+    }
 
-	@Test
-	public void testCoGroupWithBroadcast() throws Exception {
-		DataStream <Long> broadcast =
-			env.fromParallelCollection(new NumberSequenceIterator(0L, 2L), Types.LONG)
-				.map(
-					new MapFunction <Long, Long>() {
-						@Override
-						public Long map(Long aLong) throws Exception {
-							Thread.sleep(10);
-							return aLong;
-						}
-					});
-		DataStream <Long> dataStream1 =
-			env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG);
-		DataStream <Long> dataStream2 =
-			env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG);
+    @Test
+    public void testCoGroupWithBroadcast() throws Exception {
+        DataStream<Long> broadcast =
+                env.fromParallelCollection(new NumberSequenceIterator(0L, 2L), Types.LONG)
+                        .map(
+                                new MapFunction<Long, Long>() {
+                                    @Override
+                                    public Long map(Long aLong) throws Exception {
+                                        Thread.sleep(10);
+                                        return aLong;
+                                    }
+                                });
+        DataStream<Long> dataStream1 =
+                env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG);
+        DataStream<Long> dataStream2 =
+                env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG);
 
-		DataStream <Integer> coResult =
-			BroadcastUtils.withBroadcastStream(
-				Arrays.asList(dataStream1, dataStream2),
-				Collections.singletonMap("broadcast", dataStream1),
-				inputList -> {
-					DataStream <Long> data1 = (DataStream <Long>) inputList.get(0);
-					DataStream <Long> data2 = (DataStream <Long>) inputList.get(1);
+        DataStream<Integer> coResult =
+                BroadcastUtils.withBroadcastStream(
+                        Arrays.asList(dataStream1, dataStream2),
+                        Collections.singletonMap("broadcast", dataStream1),
+                        inputList -> {
+                            DataStream<Long> data1 = (DataStream<Long>) inputList.get(0);
+                            DataStream<Long> data2 = (DataStream<Long>) inputList.get(1);
 
-					return DataStreamUtils.coGroup(
-						data1,
-						data2,
-						new KeySelector <Long, Long>() {
+                            return DataStreamUtils.coGroup(
+                                    data1,
+                                    data2,
+                                    new KeySelector<Long, Long>() {
 
-							@Override
-							public Long getKey(Long aLong) throws Exception {
-								return aLong;
-							}
-						},
-						new KeySelector <Long, Long>() {
+                                        @Override
+                                        public Long getKey(Long aLong) throws Exception {
+                                            return aLong;
+                                        }
+                                    },
+                                    new KeySelector<Long, Long>() {
 
-							@Override
-							public Long getKey(Long aLong) throws Exception {
-								return aLong;
-							}
-						},
-						TypeInformation.of(Integer.class),
-						new RichCoGroupFunction <Long, Long, Integer>() {
-							@Override
-							public void coGroup(
-								Iterable <Long> iterable,
-								Iterable <Long> iterable1,
-								Collector <Integer> collector) {
-								collector.collect(
-									Integer.valueOf(
-										getRuntimeContext()
-											.getBroadcastVariable(
-												"broadcast")
-											.get(1)
-											.toString()));
-							}
-						});
-				});
+                                        @Override
+                                        public Long getKey(Long aLong) throws Exception {
+                                            return aLong;
+                                        }
+                                    },
+                                    TypeInformation.of(Integer.class),
+                                    new CustomRichCoGroupFunction());
+                        });
 
-		List <Integer> counts = IteratorUtils.toList(coResult.executeAndCollect());
-		assertEquals(6, counts.size());
-		for (int count : counts) {
-			assertEquals(1, count);
-		}
-	}
+        List<Integer> counts = IteratorUtils.toList(coResult.executeAndCollect());
+        assertEquals(6, counts.size());
+        for (int count : counts) {
+            assertEquals(1, count);
+        }
+    }
 
-	private static class TrainIterationBody implements IterationBody {
+    private static class CustomRichCoGroupFunction
+            extends RichCoGroupFunction<Long, Long, Integer> {
+        @Override
+        public void coGroup(
+                Iterable<Long> iterable, Iterable<Long> iterable1, Collector<Integer> collector) {
+            collector.collect(
+                    Integer.valueOf(
+                            getRuntimeContext()
+                                    .getBroadcastVariable("broadcast")
+                                    .get(1)
+                                    .toString()));
+        }
+    }
 
-		@Override
-		public IterationBodyResult process(
-			DataStreamList variableStreams, DataStreamList dataStreams) {
+    private static class TrainIterationBody implements IterationBody {
 
-			DataStreamList feedbackVariableStream =
-				IterationBody.forEachRound(
-					dataStreams,
-					input -> {
-						DataStream <Tuple2 <Long, DenseVector>> dataStream1 =
-							variableStreams.get(0);
-						DataStream <Tuple2 <Long, DenseVector>> dataStream2 =
-							variableStreams.get(1);
+        @Override
+        public IterationBodyResult process(
+                DataStreamList variableStreams, DataStreamList dataStreams) {
 
-						DataStream <Tuple2 <Long, DenseVector>> coResult =
-							DataStreamUtils.coGroup(
-								dataStream1,
-								dataStream2,
-								new KeySelector <Tuple2 <Long, DenseVector>, Long>() {
+            DataStreamList feedbackVariableStream =
+                    IterationBody.forEachRound(
+                            dataStreams,
+                            input -> {
+                                DataStream<Tuple2<Long, DenseVector>> dataStream1 =
+                                        variableStreams.get(0);
+                                DataStream<Tuple2<Long, DenseVector>> dataStream2 =
+                                        variableStreams.get(1);
 
-									@Override
-									public Long getKey(Tuple2 <Long, DenseVector> longDenseVectorTuple2)
-										throws Exception {
-										return longDenseVectorTuple2.f0;
-									}
-								},
-								new KeySelector <Tuple2 <Long, DenseVector>, Long>() {
+                                DataStream<Tuple2<Long, DenseVector>> coResult =
+                                        DataStreamUtils.coGroup(
+                                                dataStream1,
+                                                dataStream2,
+                                                new KeySelector<Tuple2<Long, DenseVector>, Long>() {
 
-									@Override
-									public Long getKey(Tuple2 <Long, DenseVector> longDenseVectorTuple2)
-										throws Exception {
-										return longDenseVectorTuple2.f0;
-									}
-								},
-								new TupleTypeInfo <>(Types.LONG, TypeInformation.of(DenseVector.class)),
+                                                    @Override
+                                                    public Long getKey(
+                                                            Tuple2<Long, DenseVector>
+                                                                    longDenseVectorTuple2)
+                                                            throws Exception {
+                                                        return longDenseVectorTuple2.f0;
+                                                    }
+                                                },
+                                                new KeySelector<Tuple2<Long, DenseVector>, Long>() {
 
-								new RichCoGroupFunction <
-									Tuple2 <Long, DenseVector>,
-									Tuple2 <Long, DenseVector>,
-									Tuple2 <Long, DenseVector>>() {
-									@Override
-									public void coGroup(
-										Iterable <
-											Tuple2 <
-												Long,
-												DenseVector>>
-											iterable,
-										Iterable <
-											Tuple2 <
-												Long,
-												DenseVector>>
-											iterable1,
-										Collector <
-											Tuple2 <
-												Long,
-												DenseVector>>
-											collector) {
-										for (Tuple2 <Long, DenseVector>
-											iter : iterable) {
-											if (iter == null) {
-												continue;
-											}
-											collector.collect(iter);
-											System.out.println(
-												getRuntimeContext()
-													.getIndexOfThisSubtask()
-													+ " "
-													+ iter);
-										}
-										for (Tuple2 <Long, DenseVector>
-											iter : iterable1) {
-											if (iter == null) {
-												continue;
-											}
-											System.out.println(
-												getRuntimeContext()
-													.getIndexOfThisSubtask()
-													+ " "
-													+ iter);
-											collector.collect(iter);
-										}
-									}
-								});
-						return DataStreamList.of(
-							coResult.filter(
-								(FilterFunction <Tuple2 <Long, DenseVector>>)
-									longDenseVectorTuple2 ->
-										longDenseVectorTuple2.f0 > 0L),
-							coResult.filter(
-								(FilterFunction <Tuple2 <Long, DenseVector>>)
-									longDenseVectorTuple2 ->
-										longDenseVectorTuple2.f0 < 0L));
-					});
+                                                    @Override
+                                                    public Long getKey(
+                                                            Tuple2<Long, DenseVector>
+                                                                    longDenseVectorTuple2)
+                                                            throws Exception {
+                                                        return longDenseVectorTuple2.f0;
+                                                    }
+                                                },
+                                                new TupleTypeInfo<>(
+                                                        Types.LONG,
+                                                        TypeInformation.of(DenseVector.class)),
+                                                new RichCoGroupFunction<
+                                                        Tuple2<Long, DenseVector>,
+                                                        Tuple2<Long, DenseVector>,
+                                                        Tuple2<Long, DenseVector>>() {
+                                                    @Override
+                                                    public void coGroup(
+                                                            Iterable<Tuple2<Long, DenseVector>>
+                                                                    iterable,
+                                                            Iterable<Tuple2<Long, DenseVector>>
+                                                                    iterable1,
+                                                            Collector<Tuple2<Long, DenseVector>>
+                                                                    collector) {
+                                                        for (Tuple2<Long, DenseVector> iter :
+                                                                iterable) {
+                                                            if (iter == null) {
+                                                                continue;
+                                                            }
+                                                            collector.collect(iter);
+                                                            System.out.println(
+                                                                    getRuntimeContext()
+                                                                                    .getIndexOfThisSubtask()
+                                                                            + " "
+                                                                            + iter);
+                                                        }
+                                                        for (Tuple2<Long, DenseVector> iter :
+                                                                iterable1) {
+                                                            if (iter == null) {
+                                                                continue;
+                                                            }
+                                                            System.out.println(
+                                                                    getRuntimeContext()
+                                                                                    .getIndexOfThisSubtask()
+                                                                            + " "
+                                                                            + iter);
+                                                            collector.collect(iter);
+                                                        }
+                                                    }
+                                                });
+                                return DataStreamList.of(
+                                        coResult.filter(
+                                                (FilterFunction<Tuple2<Long, DenseVector>>)
+                                                        longDenseVectorTuple2 ->
+                                                                longDenseVectorTuple2.f0 > 0L),
+                                        coResult.filter(
+                                                (FilterFunction<Tuple2<Long, DenseVector>>)
+                                                        longDenseVectorTuple2 ->
+                                                                longDenseVectorTuple2.f0 < 0L));
+                            });
 
-			DataStream <Integer> terminationCriteria =
-				feedbackVariableStream
-					.get(0)
-					.flatMap(new TerminateOnMaxIter2(2))
-					.returns(Types.INT);
+            DataStream<Integer> terminationCriteria =
+                    feedbackVariableStream
+                            .get(0)
+                            .flatMap(new TerminateOnMaxIter2(2))
+                            .returns(Types.INT);
 
-			return new IterationBodyResult(
-				feedbackVariableStream, variableStreams, terminationCriteria);
-		}
-	}
+            return new IterationBodyResult(
+                    feedbackVariableStream, variableStreams, terminationCriteria);
+        }
+    }
 
-	@Test
-	public void testCoGroupWithIteration() throws Exception {
-		DataStream <Long> broadcast =
-			env.fromParallelCollection(new NumberSequenceIterator(0L, 2L), Types.LONG);
-		DataStream <Tuple2 <Long, DenseVector>> dataStream1 =
-			env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG)
-				.map(
-					new MapFunction <Long, Tuple2 <Long, DenseVector>>() {
-						final Random rand = new Random();
+    @Test
+    public void testCoGroupWithIteration() throws Exception {
+        DataStream<Long> broadcast =
+                env.fromParallelCollection(new NumberSequenceIterator(0L, 2L), Types.LONG);
+        DataStream<Tuple2<Long, DenseVector>> dataStream1 =
+                env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG)
+                        .map(
+                                new MapFunction<Long, Tuple2<Long, DenseVector>>() {
+                                    final Random rand = new Random();
 
-						@Override
-						public Tuple2 <Long, DenseVector> map(Long aLong) {
-							return Tuple2.of(
-								aLong,
-								new DenseVector(
-									new double[] {
-										rand.nextDouble(), rand.nextDouble()
-									}));
-						}
-					});
-		DataStream <Tuple2 <Long, DenseVector>> dataStream2 =
-			env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG)
-				.map(
-					new MapFunction <Long, Tuple2 <Long, DenseVector>>() {
-						final Random rand = new Random();
+                                    @Override
+                                    public Tuple2<Long, DenseVector> map(Long aLong) {
+                                        return Tuple2.of(
+                                                aLong,
+                                                new DenseVector(
+                                                        new double[] {
+                                                            rand.nextDouble(), rand.nextDouble()
+                                                        }));
+                                    }
+                                });
+        DataStream<Tuple2<Long, DenseVector>> dataStream2 =
+                env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG)
+                        .map(
+                                new MapFunction<Long, Tuple2<Long, DenseVector>>() {
+                                    final Random rand = new Random();
 
-						@Override
-						public Tuple2 <Long, DenseVector> map(Long aLong) {
-							return Tuple2.of(
-								-aLong,
-								new DenseVector(
-									new double[] {
-										rand.nextDouble(), rand.nextDouble()
-									}));
-						}
-					});
-		DataStreamList coResult =
-			Iterations.iterateBoundedStreamsUntilTermination(
-				DataStreamList.of(dataStream1, dataStream2),
-				ReplayableDataStreamList.notReplay(broadcast),
-				IterationConfig.newBuilder().build(),
-				new TrainIterationBody());
+                                    @Override
+                                    public Tuple2<Long, DenseVector> map(Long aLong) {
+                                        return Tuple2.of(
+                                                -aLong,
+                                                new DenseVector(
+                                                        new double[] {
+                                                            rand.nextDouble(), rand.nextDouble()
+                                                        }));
+                                    }
+                                });
+        DataStreamList coResult =
+                Iterations.iterateBoundedStreamsUntilTermination(
+                        DataStreamList.of(dataStream1, dataStream2),
+                        ReplayableDataStreamList.notReplay(broadcast),
+                        IterationConfig.newBuilder().build(),
+                        new TrainIterationBody());
 
-		List <Integer> counts = IteratorUtils.toList(coResult.get(0).executeAndCollect());
-		System.out.println(counts.size());
-	}
+        List<Integer> counts = IteratorUtils.toList(coResult.get(0).executeAndCollect());
+        System.out.println(counts.size());
+    }
 
-	public static class TerminateOnMaxIter2
-		implements IterationListener <Integer>, FlatMapFunction <Object, Integer> {
+    /** This is Java doc. */
+    public static class TerminateOnMaxIter2
+            implements IterationListener<Integer>, FlatMapFunction<Object, Integer> {
 
-		private final int maxIter;
+        private final int maxIter;
 
-		public TerminateOnMaxIter2(Integer maxIter) {
-			this.maxIter = maxIter;
-		}
+        public TerminateOnMaxIter2(Integer maxIter) {
+            this.maxIter = maxIter;
+        }
 
-		@Override
-		public void flatMap(Object value, Collector <Integer> out) {}
+        @Override
+        public void flatMap(Object value, Collector<Integer> out) {}
 
-		@Override
-		public void onEpochWatermarkIncremented(
-			int epochWatermark, Context context, Collector <Integer> collector) {
-			System.out.println("epoch watermark is: " + epochWatermark);
-			if ((epochWatermark + 1) < maxIter) {
-				collector.collect(0);
-			}
-		}
+        @Override
+        public void onEpochWatermarkIncremented(
+                int epochWatermark, Context context, Collector<Integer> collector) {
+            System.out.println("epoch watermark is: " + epochWatermark);
+            if ((epochWatermark + 1) < maxIter) {
+                collector.collect(0);
+            }
+        }
 
-		@Override
-		public void onIterationTerminated(Context context, Collector <Integer> collector) {}
-	}
+        @Override
+        public void onIterationTerminated(Context context, Collector<Integer> collector) {}
+    }
 
-	@Test
-	public void testKeyedWithBroadcast() throws Exception {
-		env.setParallelism(2);
-		DataStream <Long> broadcast =
-			env.fromParallelCollection(new NumberSequenceIterator(0L, 2L), Types.LONG);
-		DataStream <Long> dataStream1 =
-			env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG);
-		DataStream <Long> result =
-			BroadcastUtils.withBroadcastStream(
-				Collections.singletonList(dataStream1),
-				Collections.singletonMap("bc", broadcast),
-				inputList -> {
-					DataStream <Long> input = (DataStream <Long>) inputList.get(0);
-					DataStream <Long> output =
-						DataStreamUtils.reduce(
-							input.keyBy((KeySelector <Long, Long>) x -> x % 2),
-							new MyReduceFunc());
-					return output;
-				});
-		result.addSink(
-			new SinkFunction <Long>() {
-				@Override
-				public void invoke(Long value) throws Exception {
-					SinkFunction.super.invoke(value);
-					System.out.println(value);
-				}
-			});
-		env.execute();
-	}
+    @Test
+    public void testKeyedWithBroadcast() throws Exception {
+        env.setParallelism(2);
+        DataStream<Long> broadcast =
+                env.fromParallelCollection(new NumberSequenceIterator(0L, 2L), Types.LONG);
+        DataStream<Long> dataStream1 =
+                env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG);
+        DataStream<Long> result =
+                BroadcastUtils.withBroadcastStream(
+                        Collections.singletonList(dataStream1),
+                        Collections.singletonMap("bc", broadcast),
+                        inputList -> {
+                            DataStream<Long> input = (DataStream<Long>) inputList.get(0);
+                            DataStream<Long> output =
+                                    DataStreamUtils.reduce(
+                                            input.keyBy((KeySelector<Long, Long>) x -> x % 2),
+                                            new MyReduceFunc());
+                            return output;
+                        });
+        result.addSink(
+                new SinkFunction<Long>() {
+                    @Override
+                    public void invoke(Long value) throws Exception {
+                        SinkFunction.super.invoke(value);
+                        System.out.println(value);
+                    }
+                });
+        env.execute();
+    }
 
-	private static class MyReduceFunc extends RichReduceFunction <Long> {
+    private static class MyReduceFunc extends RichReduceFunction<Long> {
 
-		@Override
-		public Long reduce(Long aLong, Long t1) throws Exception {
-			Long x = (Long) getRuntimeContext().getBroadcastVariable("bc").get(0);
-			System.out.println("bs" + x);
-			return aLong + t1;
-		}
-	}
+        @Override
+        public Long reduce(Long aLong, Long t1) throws Exception {
+            Long x = (Long) getRuntimeContext().getBroadcastVariable("bc").get(0);
+            System.out.println("bs" + x);
+            return aLong + t1;
+        }
+    }
 
-	@Test
-	public void testPhysicalTransformation() {
-		env.setParallelism(2);
-		DataStream <Long> broadcast =
-			env.fromParallelCollection(new NumberSequenceIterator(0L, 2L), Types.LONG);
-		KeyedStream <Long, Long> dataStream1 =
-			env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG)
-				.keyBy(x -> x);
-		System.out.println(broadcast.getTransformation() instanceof PhysicalTransformation);
-		System.out.println(dataStream1.getTransformation() instanceof PhysicalTransformation);
-	}
+    @Test
+    public void testPhysicalTransformation() {
+        env.setParallelism(2);
+        DataStream<Long> broadcast =
+                env.fromParallelCollection(new NumberSequenceIterator(0L, 2L), Types.LONG);
+        KeyedStream<Long, Long> dataStream1 =
+                env.fromParallelCollection(new NumberSequenceIterator(0L, 5L), Types.LONG)
+                        .keyBy(x -> x);
+        System.out.println(broadcast.getTransformation() instanceof PhysicalTransformation);
+        System.out.println(dataStream1.getTransformation() instanceof PhysicalTransformation);
+    }
 }

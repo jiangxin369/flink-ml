@@ -727,6 +727,7 @@ public class CoGroupTest {
         }
     }
 
+    /** This is Java doc. */
     public static class TerminateOnMaxIter2
             implements IterationListener<Integer>, FlatMapFunction<Object, Integer> {
 
