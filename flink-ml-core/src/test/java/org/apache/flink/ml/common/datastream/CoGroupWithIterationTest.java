@@ -248,6 +248,7 @@ public class CoGroupWithIterationTest {
 
     @Test
     public void testCoGroupWithIteration() throws Exception {
+        env.setParallelism(1);
         DataStream<Long> broadcast =
                 env.fromParallelCollection(new NumberSequenceIterator(0L, 2L), Types.LONG);
         DataStream<Tuple2<Long, DenseVector>> dataStream1 =

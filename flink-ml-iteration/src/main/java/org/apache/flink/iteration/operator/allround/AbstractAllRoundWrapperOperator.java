@@ -35,6 +35,7 @@ import org.apache.flink.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
+import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.KeyContext;
 import org.apache.flink.streaming.api.operators.OperatorSnapshotFutures;
 import org.apache.flink.streaming.api.operators.StreamOperator;
@@ -46,6 +47,7 @@ import org.apache.flink.streaming.api.operators.StreamTaskStateInitializer;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
+import org.apache.flink.streaming.runtime.tasks.TwoInputStreamTask;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -74,6 +76,13 @@ public abstract class AbstractAllRoundWrapperOperator<T, S extends StreamOperato
             StreamOperatorParameters<IterationRecord<T>> parameters,
             StreamOperatorFactory<T> operatorFactory) {
         super(parameters, operatorFactory);
+
+        if (TwoInputStreamTask.class.isAssignableFrom(parameters.getContainingTask().getClass())) {
+            System.out.println(parameters.getContainingTask());
+            StreamConfig.InputConfig[] inputConfigs =
+                    parameters.getStreamConfig().getInputs(containingTask.getUserCodeClassLoader());
+            System.out.println(inputConfigs);
+        }
 
         this.wrappedOperator =
                 (S)
