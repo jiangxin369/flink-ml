@@ -163,6 +163,8 @@ public class MultipleInputAllRoundWrapperOperatorTest extends TestLogger {
                             LifeCycle.FINISH,
                             LifeCycle.CLOSE),
                     LIFE_CYCLES);
+
+            harness.endInput();
         }
     }
 

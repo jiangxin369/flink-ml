@@ -37,6 +37,8 @@ public class OneInputAllRoundWrapperOperator<IN, OUT>
 
     private final StreamRecord<IN> reusedInput;
 
+    private int iterationContextRound;
+
     public OneInputAllRoundWrapperOperator(
             StreamOperatorParameters<IterationRecord<OUT>> parameters,
             StreamOperatorFactory<OUT> operatorFactory) {
@@ -49,7 +51,8 @@ public class OneInputAllRoundWrapperOperator<IN, OUT>
         switch (element.getValue().getType()) {
             case RECORD:
                 reusedInput.replace(element.getValue().getValue(), element.getTimestamp());
-                setIterationContextRound(element.getValue().getEpoch());
+                iterationContextRound = element.getValue().getEpoch();
+                setIterationContextRound(iterationContextRound);
                 wrappedOperator.processElement(reusedInput);
                 clearIterationContextRound();
                 break;
@@ -87,7 +90,9 @@ public class OneInputAllRoundWrapperOperator<IN, OUT>
     @Override
     public void endInput() throws Exception {
         if (wrappedOperator instanceof BoundedOneInput) {
+            setIterationContextRound(iterationContextRound);
             ((BoundedOneInput) wrappedOperator).endInput();
+            clearIterationContextRound();
         }
     }
 }

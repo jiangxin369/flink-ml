@@ -38,6 +38,8 @@ public class MultipleInputAllRoundWrapperOperator<OUT>
         extends AbstractAllRoundWrapperOperator<OUT, MultipleInputStreamOperator<OUT>>
         implements MultipleInputStreamOperator<IterationRecord<OUT>>, BoundedMultiInput {
 
+    private int iterationContextRound;
+
     public MultipleInputAllRoundWrapperOperator(
             StreamOperatorParameters<IterationRecord<OUT>> parameters,
             StreamOperatorFactory<OUT> operatorFactory) {
@@ -53,7 +55,8 @@ public class MultipleInputAllRoundWrapperOperator<OUT>
         switch (element.getValue().getType()) {
             case RECORD:
                 reusedInput.replace(element.getValue().getValue(), element.getTimestamp());
-                setIterationContextRound(element.getValue().getEpoch());
+                iterationContextRound = element.getValue().getEpoch();
+                setIterationContextRound(iterationContextRound);
                 input.processElement(reusedInput);
                 clearIterationContextRound();
                 break;
@@ -83,7 +86,9 @@ public class MultipleInputAllRoundWrapperOperator<OUT>
         super.endInput(i);
 
         if (wrappedOperator instanceof BoundedMultiInput) {
+            setIterationContextRound(iterationContextRound);
             ((BoundedMultiInput) wrappedOperator).endInput(i);
+            clearIterationContextRound();
         }
     }
 

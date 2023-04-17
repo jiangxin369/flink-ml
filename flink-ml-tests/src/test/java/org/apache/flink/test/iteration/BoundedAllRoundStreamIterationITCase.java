@@ -18,6 +18,9 @@
 
 package org.apache.flink.test.iteration;
 
+import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
@@ -26,6 +29,7 @@ import org.apache.flink.iteration.IterationConfig;
 import org.apache.flink.iteration.Iterations;
 import org.apache.flink.iteration.ReplayableDataStreamList;
 import org.apache.flink.iteration.compile.DraftExecutionEnvironment;
+import org.apache.flink.ml.common.broadcast.BroadcastUtils;
 import org.apache.flink.ml.common.iteration.TerminateOnMaxIter;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.minicluster.MiniCluster;
@@ -39,6 +43,7 @@ import org.apache.flink.test.iteration.operators.OutputRecord;
 import org.apache.flink.test.iteration.operators.SequenceSource;
 import org.apache.flink.test.iteration.operators.StatefulProcessFunction;
 import org.apache.flink.test.iteration.operators.TwoInputReduceAllRoundProcessFunction;
+import org.apache.flink.test.iteration.operators.TwoInputReducePerRoundOperator;
 import org.apache.flink.testutils.junit.SharedObjects;
 import org.apache.flink.testutils.junit.SharedReference;
 import org.apache.flink.util.OutputTag;
@@ -51,6 +56,7 @@ import org.junit.Test;
 
 import javax.annotation.Nullable;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -90,7 +96,7 @@ public class BoundedAllRoundStreamIterationITCase extends TestLogger {
     @Test(timeout = 60000)
     public void testSyncVariableOnlyBoundedIteration() throws Exception {
         JobGraph jobGraph =
-                createVariableOnlyJobGraph(4, 1000, false, 0, true, 4, null, false, result);
+                createVariableOnlyJobGraph(4, 1000, false, 0, true, 4, true, null, false, result);
         miniCluster.executeJobBlocking(jobGraph);
 
         assertEquals(6, result.get().size());
@@ -123,6 +129,7 @@ public class BoundedAllRoundStreamIterationITCase extends TestLogger {
                         0,
                         true,
                         40,
+                        true,
                         4,
                         terminationCriteriaFollowsConstantsStreams,
                         result);
@@ -143,7 +150,8 @@ public class BoundedAllRoundStreamIterationITCase extends TestLogger {
 
     @Test(timeout = 60000)
     public void testSyncVariableAndConstantBoundedIteration() throws Exception {
-        JobGraph jobGraph = createVariableAndConstantJobGraph(4, 1000, false, 0, true, 4, result);
+        JobGraph jobGraph =
+                createVariableAndConstantJobGraph(4, 1000, false, 0, true, 4, true, result);
         miniCluster.executeJobBlocking(jobGraph);
 
         assertEquals(6, result.get().size());
@@ -161,6 +169,7 @@ public class BoundedAllRoundStreamIterationITCase extends TestLogger {
             int period,
             boolean sync,
             int maxRound,
+            boolean doBroadcast,
             @Nullable Integer terminationCriteriaRound,
             boolean terminationCriteriaFollowsConstantsStreams,
             SharedReference<BlockingQueue<OutputRecord<Integer>>> result) {
@@ -181,10 +190,12 @@ public class BoundedAllRoundStreamIterationITCase extends TestLogger {
                         ReplayableDataStreamList.notReplay(constSource),
                         IterationConfig.newBuilder().build(),
                         (variableStreams, dataStreams) -> {
+                            DataStream<EpochRecord> dataStream = dataStreams.get(0);
+                            DataStream<EpochRecord> variableStream = variableStreams.get(0);
+
                             SingleOutputStreamOperator<EpochRecord> reducer =
-                                    variableStreams
-                                            .<EpochRecord>get(0)
-                                            .connect(dataStreams.<EpochRecord>get(0))
+                                    variableStream
+                                            .connect(dataStream)
                                             .process(
                                                     new TwoInputReduceAllRoundProcessFunction(
                                                             sync, maxRound));
@@ -227,6 +238,7 @@ public class BoundedAllRoundStreamIterationITCase extends TestLogger {
             int period,
             boolean sync,
             int maxRound,
+            boolean doBroadcast,
             SharedReference<BlockingQueue<OutputRecord<Integer>>> result) {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.getConfig().enableObjectReuse();
@@ -245,10 +257,31 @@ public class BoundedAllRoundStreamIterationITCase extends TestLogger {
                         ReplayableDataStreamList.notReplay(constSource),
                         IterationConfig.newBuilder().build(),
                         (variableStreams, dataStreams) -> {
+                            DataStream<EpochRecord> dataStream = dataStreams.get(0);
+                            DataStream<EpochRecord> variableStream = variableStreams.get(0);
+                            if (doBroadcast) {
+                                dataStream =
+                                        BroadcastUtils.withBroadcastStream(
+                                                Collections.singletonList(dataStream),
+                                                Collections.singletonMap("key", variableStream),
+                                                inputList -> {
+                                                    DataStream input = inputList.get(0);
+                                                    return input.map(
+                                                            new RichMapFunction() {
+                                                                @Override
+                                                                public Object map(Object value)
+                                                                        throws Exception {
+                                                                    return value;
+                                                                }
+                                                            },
+                                                            TypeInformation.of(EpochRecord.class));
+                                                });
+                            }
+
                             SingleOutputStreamOperator<EpochRecord> reducer =
                                     variableStreams
                                             .<EpochRecord>get(0)
-                                            .connect(dataStreams.<EpochRecord>get(0))
+                                            .connect(dataStream)
                                             .process(
                                                     new TwoInputReduceAllRoundProcessFunction(
                                                             sync, maxRound));
@@ -274,5 +307,73 @@ public class BoundedAllRoundStreamIterationITCase extends TestLogger {
         outputs.<OutputRecord<Integer>>get(0).addSink(new CollectSink(result));
 
         return env.getStreamGraph().getJobGraph();
+    }
+
+    private static JobGraph createBoundedConstantJobGraph(
+            int maxRound, SharedReference<BlockingQueue<OutputRecord<Integer>>> result) {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.getConfig().enableObjectReuse();
+        env.setParallelism(1);
+
+        DataStream<Integer> variableSource = env.fromElements(0);
+        DataStream<Integer> constSource =
+                env.addSource(new SequenceSource(10, false, 0))
+                        .setParallelism(1)
+                        .map(EpochRecord::getValue)
+                        .setParallelism(1)
+                        .name("Constant");
+
+        DataStreamList outputs =
+                Iterations.iterateBoundedStreamsUntilTermination(
+                        DataStreamList.of(variableSource),
+                        ReplayableDataStreamList.notReplay(constSource),
+                        IterationConfig.newBuilder().build(),
+                        (variableStreams, dataStreams) -> {
+                            SingleOutputStreamOperator<Integer> reducer =
+                                    variableStreams
+                                            .<Integer>get(0)
+                                            .connect(dataStreams.<Integer>get(0))
+                                            .transform(
+                                                    "Reducer",
+                                                    BasicTypeInfo.INT_TYPE_INFO,
+                                                    new TwoInputReducePerRoundOperator())
+                                            .setParallelism(1);
+
+                            return new IterationBodyResult(
+                                    DataStreamList.of(
+                                            reducer.partitionCustom(
+                                                            (k, numPartitions) -> k % numPartitions,
+                                                            x -> x)
+                                                    .map(x -> x)
+                                                    .keyBy(x -> x)
+                                                    .process(
+                                                            new StatefulProcessFunction<
+                                                                    Integer>() {})
+                                                    .setParallelism(4)
+                                                    .filter(x -> x < maxRound)
+                                                    .setParallelism(1)),
+                                    DataStreamList.of(
+                                            reducer.getSideOutput(
+                                                    TwoInputReducePerRoundOperator.OUTPUT_TAG)),
+                                    reducer.filter(x -> x < maxRound)
+                                            .map(x -> (double) x)
+                                            .setParallelism(1));
+                        });
+        outputs.<OutputRecord<Integer>>get(0).addSink(new CollectSink(result));
+
+        return env.getStreamGraph().getJobGraph();
+    }
+
+    @Test(timeout = 60000)
+    public void testBoundedConstantIteration() throws Exception {
+        JobGraph jobGraph = createBoundedConstantJobGraph(4, result);
+        miniCluster.executeJobBlocking(jobGraph);
+
+        assertEquals(6, result.get().size());
+        Map<Integer, Tuple2<Integer, Integer>> roundsStat =
+                computeRoundStat(result.get(), OutputRecord.Event.EPOCH_WATERMARK_INCREMENTED, 5);
+
+        verifyResult(roundsStat, 5, 1, 4 * (0 + 999) * 1000 / 2);
+        assertEquals(OutputRecord.Event.TERMINATED, result.get().take().getEvent());
     }
 }

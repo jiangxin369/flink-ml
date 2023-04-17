@@ -27,6 +27,7 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.watermarkstatus.WatermarkStatus;
+import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.function.ThrowingConsumer;
 
@@ -40,6 +41,8 @@ public class TwoInputAllRoundWrapperOperator<IN1, IN2, OUT>
     private final StreamRecord<IN1> reusedInput1;
 
     private final StreamRecord<IN2> reusedInput2;
+
+    private int iterationContextRound;
 
     public TwoInputAllRoundWrapperOperator(
             StreamOperatorParameters<IterationRecord<OUT>> parameters,
@@ -69,7 +72,8 @@ public class TwoInputAllRoundWrapperOperator<IN1, IN2, OUT>
         switch (element.getValue().getType()) {
             case RECORD:
                 reusedInput.replace(element.getValue().getValue(), element.getTimestamp());
-                setIterationContextRound(element.getValue().getEpoch());
+                iterationContextRound = element.getValue().getEpoch();
+                setIterationContextRound(iterationContextRound);
                 processor.accept(reusedInput);
                 clearIterationContextRound();
                 break;
@@ -116,7 +120,9 @@ public class TwoInputAllRoundWrapperOperator<IN1, IN2, OUT>
         super.endInput(i);
 
         if (wrappedOperator instanceof BoundedMultiInput) {
+            setIterationContextRound(iterationContextRound);
             ((BoundedMultiInput) wrappedOperator).endInput(i);
+            clearIterationContextRound();
         }
     }
 }
