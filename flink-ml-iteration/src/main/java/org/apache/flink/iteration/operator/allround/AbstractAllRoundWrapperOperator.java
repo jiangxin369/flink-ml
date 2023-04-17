@@ -104,7 +104,6 @@ public abstract class AbstractAllRoundWrapperOperator<T, S extends StreamOperato
                     wrappedOperator,
                     IterationListener.class,
                     listener -> notifyEpochWatermarkIncrement(listener, epochWatermark));
-            clearIterationContextRound();
         }
 
         // Always broadcasts the events.

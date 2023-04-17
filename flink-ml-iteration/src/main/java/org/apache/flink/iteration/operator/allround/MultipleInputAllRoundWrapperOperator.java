@@ -55,7 +55,6 @@ public class MultipleInputAllRoundWrapperOperator<OUT>
                 reusedInput.replace(element.getValue().getValue(), element.getTimestamp());
                 setIterationContextRound(element.getValue().getEpoch());
                 input.processElement(reusedInput);
-                clearIterationContextRound();
                 break;
             case EPOCH_WATERMARK:
                 onEpochWatermarkEvent(inputIndex, element.getValue());
