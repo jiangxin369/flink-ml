@@ -18,6 +18,7 @@
 
 package org.apache.flink.test.iteration;
 
+import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
@@ -39,6 +40,7 @@ import org.apache.flink.test.iteration.operators.OutputRecord;
 import org.apache.flink.test.iteration.operators.SequenceSource;
 import org.apache.flink.test.iteration.operators.StatefulProcessFunction;
 import org.apache.flink.test.iteration.operators.TwoInputReduceAllRoundProcessFunction;
+import org.apache.flink.test.iteration.operators.TwoInputReducePerRoundOperator;
 import org.apache.flink.testutils.junit.SharedObjects;
 import org.apache.flink.testutils.junit.SharedReference;
 import org.apache.flink.util.OutputTag;
@@ -274,5 +276,65 @@ public class BoundedAllRoundStreamIterationITCase extends TestLogger {
         outputs.<OutputRecord<Integer>>get(0).addSink(new CollectSink(result));
 
         return env.getStreamGraph().getJobGraph();
+    }
+
+    private static JobGraph createBoundedConstantJobGraph(
+            int numSources,
+            int numRecordsPerSource,
+            int maxRound,
+            SharedReference<BlockingQueue<OutputRecord<Integer>>> result) {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.getConfig().enableObjectReuse();
+        env.setParallelism(1);
+
+        DataStream<Integer> variableSource = env.fromElements(0);
+        DataStream<Integer> constSource =
+                env.addSource(new SequenceSource(numRecordsPerSource, false, 0))
+                        .setParallelism(numSources)
+                        .map(EpochRecord::getValue)
+                        .setParallelism(numSources)
+                        .name("Constant");
+
+        DataStreamList outputs =
+                Iterations.iterateBoundedStreamsUntilTermination(
+                        DataStreamList.of(variableSource),
+                        ReplayableDataStreamList.notReplay(constSource),
+                        IterationConfig.newBuilder().build(),
+                        (variableStreams, dataStreams) -> {
+                            SingleOutputStreamOperator<Integer> reducer =
+                                    variableStreams
+                                            .<Integer>get(0)
+                                            .connect(dataStreams.<Integer>get(0))
+                                            .transform(
+                                                    "Reducer",
+                                                    BasicTypeInfo.INT_TYPE_INFO,
+                                                    new TwoInputReducePerRoundOperator())
+                                            .setParallelism(numSources);
+
+                            return new IterationBodyResult(
+                                    DataStreamList.of(reducer.setParallelism(1)),
+                                    DataStreamList.of(
+                                            reducer.getSideOutput(
+                                                    TwoInputReducePerRoundOperator.OUTPUT_TAG)),
+                                    reducer.filter(x -> x < maxRound)
+                                            .map(x -> (double) x)
+                                            .setParallelism(1));
+                        });
+        outputs.<OutputRecord<Integer>>get(0).addSink(new CollectSink(result));
+
+        return env.getStreamGraph().getJobGraph();
+    }
+
+    @Test(timeout = 60000)
+    public void testBoundedConstantIteration() throws Exception {
+        JobGraph jobGraph = createBoundedConstantJobGraph(4, 1000, 6, result);
+        miniCluster.executeJobBlocking(jobGraph);
+
+        assertEquals(1, result.get().size());
+        Map<Integer, Tuple2<Integer, Integer>> roundsStat =
+                computeRoundStat(result.get(), OutputRecord.Event.EPOCH_WATERMARK_INCREMENTED, 5);
+
+        verifyResult(roundsStat, 5, 1, 4 * (0 + 999) * 1000 / 2);
+        assertEquals(OutputRecord.Event.TERMINATED, result.get().take().getEvent());
     }
 }
