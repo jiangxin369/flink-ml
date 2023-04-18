@@ -45,7 +45,10 @@ public class TerminateOnMaxIter<T>
 
     @Override
     public void onEpochWatermarkIncremented(
-            int epochWatermark, Context context, Collector<Integer> out) {
+            int epochWatermark, Context context, Collector<Integer> out)
+            throws InterruptedException {
+        Thread.sleep(1000);
+        System.err.println("epoch is " + epochWatermark);
         if (epochWatermark + 1 < maxIter) {
             out.collect(0);
         }

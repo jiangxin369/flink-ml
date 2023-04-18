@@ -21,6 +21,7 @@ package org.apache.flink.ml.clustering;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
+import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.SparseVector;
@@ -28,8 +29,12 @@ import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.TestUtils;
+import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.test.util.AbstractTestBase;
@@ -265,5 +270,34 @@ public class KMeansTest extends AbstractTestBase {
                 groupFeaturesByPrediction(
                         results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
+    }
+
+    private static class PassByOperator extends AbstractStreamOperator<Row>
+            implements OneInputStreamOperator<Row, Row> {
+
+        @Override
+        public void snapshotState(StateSnapshotContext context) throws Exception {
+            System.err.println("Entry PassByOperator#snapshotState");
+            super.snapshotState(context);
+        }
+
+        @Override
+        public void processElement(StreamRecord<Row> element) throws Exception {
+            output.collect(element);
+        }
+    }
+
+    @Test
+    public void testFitAndPredict2() throws Exception {
+        KMeans kmeans = new KMeans().setMaxIter(10).setK(2);
+        KMeansModel model = kmeans.fit(dataTable);
+        Table output = model.transform(dataTable)[0];
+        DataStream<Row> prediction = tEnv.toDataStream(output);
+        DataStream<Row> passBy =
+                prediction.transform(
+                        "pass-by",
+                        TableUtils.getRowTypeInfo(output.getResolvedSchema()),
+                        new PassByOperator());
+        System.out.println(passBy.executeAndCollect(3));
     }
 }
