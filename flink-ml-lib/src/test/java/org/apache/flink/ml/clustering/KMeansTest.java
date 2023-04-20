@@ -21,7 +21,6 @@ package org.apache.flink.ml.clustering;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
-import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.SparseVector;
@@ -92,6 +91,7 @@ public class KMeansTest extends AbstractTestBase {
     @Before
     public void before() {
         env = TestUtils.getExecutionEnvironment();
+        env.setParallelism(1);
         tEnv = StreamTableEnvironment.create(env);
         dataTable = tEnv.fromDataStream(env.fromCollection(DATA)).as("features");
     }
@@ -291,13 +291,11 @@ public class KMeansTest extends AbstractTestBase {
     public void testFitAndPredict2() throws Exception {
         KMeans kmeans = new KMeans().setMaxIter(10).setK(2);
         KMeansModel model = kmeans.fit(dataTable);
-        Table output = model.transform(dataTable)[0];
-        DataStream<Row> prediction = tEnv.toDataStream(output);
+
+        //        Table output = model.transform(dataTable)[0];
+        DataStream<Row> prediction = tEnv.toDataStream(model.getModelData()[0]);
         DataStream<Row> passBy =
-                prediction.transform(
-                        "pass-by",
-                        TableUtils.getRowTypeInfo(output.getResolvedSchema()),
-                        new PassByOperator());
+                prediction.transform("pass-by", prediction.getType(), new PassByOperator());
         System.out.println(passBy.executeAndCollect(3));
     }
 }

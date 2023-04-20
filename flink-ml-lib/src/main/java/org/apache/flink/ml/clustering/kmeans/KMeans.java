@@ -264,7 +264,6 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
         public void processElement2(StreamRecord<DenseVector[]> streamRecord) throws Exception {
             Preconditions.checkState(!centroids.get().iterator().hasNext());
             centroids.add(streamRecord.getValue());
-            System.out.println("Adding centroid: " + streamRecord.getValue());
         }
 
         @Override
@@ -273,7 +272,6 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                 Context context,
                 Collector<Tuple2<Integer[], DenseVector[]>> out)
                 throws Exception {
-            System.out.println("Kmeans Epoch is " + epochWatermark);
             DenseVector[] centroidValues =
                     Objects.requireNonNull(
                             OperatorStateUtils.getUniqueElement(centroids, "centroids")
