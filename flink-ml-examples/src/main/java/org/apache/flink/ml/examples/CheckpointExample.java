@@ -34,7 +34,7 @@ public class CheckpointExample {
     public static void main(String[] args) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.getConfig().enableObjectReuse();
-        env.enableCheckpointing(500);
+        env.enableCheckpointing(1000);
         env.setParallelism(1);
 
         SourceFunction<Integer> rowGenerator =
@@ -62,7 +62,7 @@ public class CheckpointExample {
                             SingleOutputStreamOperator<Integer> processor =
                                     dataStreams
                                             .<Integer>get(0)
-                                            .connect(variableStreams.<Integer>get(0).broadcast())
+                                            .connect(variableStreams.<Integer>get(0))
                                             .transform(
                                                     "Increment",
                                                     BasicTypeInfo.INT_TYPE_INFO,
