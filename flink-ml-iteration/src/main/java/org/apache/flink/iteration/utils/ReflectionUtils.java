@@ -18,8 +18,11 @@
 
 package org.apache.flink.iteration.utils;
 
+import org.apache.flink.util.Preconditions;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -75,6 +78,57 @@ public class ReflectionUtils {
                             methodName, parameterClass.toArray(new Class[0]));
             method.setAccessible(true);
             return (T) method.invoke(targetObject, parameters.toArray());
+        } catch (Exception e) {
+            throw new RuntimeException(
+                    "Failed to get method" + methodName + " from " + targetObject, e);
+        }
+    }
+
+    /**
+     * The utility method to call method with the specific name and parameters.
+     *
+     * <p>Note that this method is added only for bypassing the existing bug in Py4j. It doesn't
+     * validate the classes of parameters so it can only deal with the classes that have only one
+     * method with the specific name.
+     *
+     * <p>TODO Remove this method after the Py4j bug is fixed.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> T callMethodByName(
+            Object targetObject, Class<?> declaredClass, String methodName, Object[] parameters) {
+        List<Method> methods = new ArrayList<>();
+        for (Method m : declaredClass.getMethods()) {
+            if (methodName.equals(m.getName())) {
+                m.setAccessible(true);
+                methods.add(m);
+            }
+        }
+        Preconditions.checkState(
+                methods.size() == 1,
+                "Only one method with name %s is permitted to be declared in %s",
+                methodName,
+                declaredClass);
+        try {
+            return (T) methods.get(0).invoke(targetObject, parameters);
+        } catch (Exception e) {
+            throw new RuntimeException(
+                    "Failed to invoke method" + methodName + " from " + targetObject, e);
+        }
+    }
+
+    /**
+     * The utility method to call method with the specific name.
+     *
+     * <p>TODO Remove this method after the Py4j bug is fixed.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> T callMethodByName(
+            Object targetObject, Class<?> declaredClass, String methodName) {
+
+        try {
+            Method method = declaredClass.getMethod(methodName);
+            method.setAccessible(true);
+            return (T) method.invoke(targetObject);
         } catch (Exception e) {
             throw new RuntimeException(
                     "Failed to get method" + methodName + " from " + targetObject, e);
