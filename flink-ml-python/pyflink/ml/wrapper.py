@@ -116,7 +116,7 @@ class JavaWithParams(WithParams, JavaWrapper):
         set_method_name = ''.join(['set', java_param_name[0].upper(), java_param_name[1:]])
 
         gateway = get_gateway()
-        gateway.jvm.org.apache.flink.iteration.utils.ReflectionUtils.callMethodByName(
+        gateway.jvm.org.apache.flink.iteration.utils.ReflectionUtils.callMethod(
             self._java_obj,
             self._java_obj.getClass(),
             set_method_name,
@@ -133,7 +133,7 @@ class JavaWithParams(WithParams, JavaWrapper):
         get_method_name = ''.join(['get', java_param_name[0].upper(), java_param_name[1:]])
 
         gateway = get_gateway()
-        result = gateway.jvm.org.apache.flink.iteration.utils.ReflectionUtils.callMethodByName(
+        result = gateway.jvm.org.apache.flink.iteration.utils.ReflectionUtils.callMethod(
             self._java_obj,
             self._java_obj.getClass(),
             get_method_name

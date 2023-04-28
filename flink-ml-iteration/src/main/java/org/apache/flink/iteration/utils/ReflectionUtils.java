@@ -72,34 +72,46 @@ public class ReflectionUtils {
             String methodName,
             List<Class<?>> parameterClass,
             List<Object> parameters) {
+
+        Method method;
         try {
-            Method method =
+            method =
                     declaredClass.getDeclaredMethod(
                             methodName, parameterClass.toArray(new Class[0]));
             method.setAccessible(true);
+        } catch (NoSuchMethodException e1) {
+            try {
+                method = declaredClass.getMethod(methodName, parameterClass.toArray(new Class[0]));
+            } catch (NoSuchMethodException e2) {
+                throw new RuntimeException(
+                        "Failed to get method" + methodName + " from " + targetObject, e2);
+            }
+        }
+
+        try {
             return (T) method.invoke(targetObject, parameters.toArray());
         } catch (Exception e) {
             throw new RuntimeException(
-                    "Failed to get method" + methodName + " from " + targetObject, e);
+                    "Failed to invoke method" + methodName + " from " + targetObject, e);
         }
     }
 
     /**
-     * The utility method to call method with the specific name and parameters.
+     * The utility method to call method with the specific name and parameters. The method can be a
+     * public method of the class or one inherited from superclasses and superinterfaces.
      *
      * <p>Note that this method is added only for bypassing the existing bug in Py4j. It doesn't
      * validate the classes of parameters so it can only deal with the classes that have only one
      * method with the specific name.
      *
-     * <p>TODO Remove this method after the Py4j bug is fixed.
+     * <p>TODO: Remove this method after the Py4j bug is fixed.
      */
     @SuppressWarnings("unchecked")
-    public static <T> T callMethodByName(
+    public static <T> T callMethod(
             Object targetObject, Class<?> declaredClass, String methodName, Object[] parameters) {
         List<Method> methods = new ArrayList<>();
         for (Method m : declaredClass.getMethods()) {
             if (methodName.equals(m.getName())) {
-                m.setAccessible(true);
                 methods.add(m);
             }
         }
@@ -113,25 +125,6 @@ public class ReflectionUtils {
         } catch (Exception e) {
             throw new RuntimeException(
                     "Failed to invoke method" + methodName + " from " + targetObject, e);
-        }
-    }
-
-    /**
-     * The utility method to call method with the specific name.
-     *
-     * <p>TODO Remove this method after the Py4j bug is fixed.
-     */
-    @SuppressWarnings("unchecked")
-    public static <T> T callMethodByName(
-            Object targetObject, Class<?> declaredClass, String methodName) {
-
-        try {
-            Method method = declaredClass.getMethod(methodName);
-            method.setAccessible(true);
-            return (T) method.invoke(targetObject);
-        } catch (Exception e) {
-            throw new RuntimeException(
-                    "Failed to get method" + methodName + " from " + targetObject, e);
         }
     }
 }
