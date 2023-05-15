@@ -20,8 +20,10 @@ package org.apache.flink.ml.common.broadcast;
 
 import org.apache.flink.api.common.functions.AbstractRichFunction;
 import org.apache.flink.api.common.functions.RichJoinFunction;
+import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.RestOptions;
@@ -38,6 +40,9 @@ import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.util.NumberSequenceIterator;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -52,6 +57,8 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import static org.apache.flink.configuration.HeartbeatManagerOptions.HEARTBEAT_TIMEOUT;
 
 /** Tests the {@link BroadcastUtils}. */
 public class BroadcastUtilsTest {
@@ -240,6 +247,96 @@ public class BroadcastUtilsTest {
                         expectedBroadcastVariable, broadcastVariable);
             }
             return first;
+        }
+    }
+
+    @Test
+    public void test2() throws Exception {
+        Configuration configuration = new Configuration();
+        configuration.setLong(HEARTBEAT_TIMEOUT, 500000L);
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(configuration);
+        env.getConfig().enableObjectReuse();
+        env.getConfig().disableGenericTypes();
+        env.setRestartStrategy(RestartStrategies.noRestart());
+        env.enableCheckpointing(200);
+        env.setParallelism(1);
+
+        SourceFunction<Long> rowGenerator =
+                new SourceFunction<Long>() {
+                    @Override
+                    public final void run(SourceContext<Long> ctx) throws Exception {
+                        for (int i = 0; i < 10; i++) {
+                            ctx.collect(Long.valueOf(i));
+                            System.out.println("------------ input Element: " + i);
+                            Thread.sleep(1000);
+                        }
+                    }
+
+                    @Override
+                    public void cancel() {}
+                };
+        DataStream<Long> input1 = env.addSource(rowGenerator, "sourceOp").returns(Types.LONG);
+
+        DataStream<Long> input2 =
+                env.fromParallelCollection(new NumberSequenceIterator(1, 10), Types.LONG);
+
+        DataStream<Long> result =
+                BroadcastUtils.withBroadcastStream(
+                        Collections.singletonList(input1),
+                        Collections.singletonMap("broadcastKey", input2),
+                        inputList -> {
+                            DataStream input = inputList.get(0);
+                            return input.map(new MockMap());
+                        });
+
+        result.addSink(
+                new SinkFunction<Long>() {
+                    @Override
+                    public void invoke(Long value, Context context) throws Exception {
+                        SinkFunction.super.invoke(value, context);
+                    }
+                });
+        env.execute();
+    }
+
+    @Test
+    public void jiraFLINK31901() throws Exception {
+        StreamExecutionEnvironment env = TestUtils.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        DataStream<Long> input1 =
+                env.fromParallelCollection(new NumberSequenceIterator(1, 1000000), Types.LONG);
+
+        DataStream<Long> input2 =
+                env.fromParallelCollection(new NumberSequenceIterator(1, 10), Types.LONG);
+
+        DataStream<Long> result =
+                BroadcastUtils.withBroadcastStream(
+                        Collections.singletonList(input1),
+                        Collections.singletonMap("broadcastKey", input2),
+                        inputList -> {
+                            DataStream input = inputList.get(0);
+                            return input.map(new MockMap());
+                        });
+
+        result.addSink(
+                new SinkFunction<Long>() {
+                    @Override
+                    public void invoke(Long value, Context context) throws Exception {
+                        SinkFunction.super.invoke(value, context);
+                    }
+                });
+        env.execute();
+    }
+
+    private static class MockMap extends RichMapFunction<Long, Long> {
+        @Override
+        public Long map(Long value) throws Exception {
+            for (int i = 0; i < 1000; i++) {
+                value += i;
+            }
+            return value;
         }
     }
 }

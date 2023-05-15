@@ -149,6 +149,21 @@ public class DataCacheWriter<T> {
         finishedSegments.clear();
     }
 
+    /** Removes all previously added records. */
+    public Segment remove(int index) throws IOException {
+        finishCurrentSegmentIfExists();
+
+        Segment segment = finishedSegments.get(index);
+        if (segment.getFsSize() > 0) {
+            fileSystem.delete(segment.getPath(), false);
+        }
+        if (!segment.getCache().isEmpty()) {
+            segmentPool.returnAll(segment.getCache());
+        }
+
+        return finishedSegments.remove(index);
+    }
+
     /** Write the segments in this writer to files on disk. */
     public void writeSegmentsToFiles() throws IOException {
         finishCurrentSegmentIfExists();

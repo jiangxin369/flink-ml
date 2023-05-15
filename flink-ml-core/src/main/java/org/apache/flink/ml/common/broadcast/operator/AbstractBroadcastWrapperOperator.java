@@ -76,6 +76,7 @@ import org.slf4j.LoggerFactory;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -158,6 +159,8 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
      * it cannot process elements until the broadcast variables are ready.
      */
     private final boolean hasRichFunction;
+
+    int numCachedRecords = 0;
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     AbstractBroadcastWrapperOperator(
@@ -258,7 +261,9 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
      * @return true if all broadcast variables are ready, false otherwise.
      */
     protected boolean areBroadcastVariablesReady() {
-        if (broadcastVariablesReady) {
+        // for debug
+        int numCachedRecordsBeforeProcessing = 5;
+        if (broadcastVariablesReady && numCachedRecords >= numCachedRecordsBeforeProcessing) {
             return true;
         }
         for (String name : broadcastStreamNames) {
@@ -272,7 +277,7 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
             }
         }
         broadcastVariablesReady = true;
-        return true;
+        return numCachedRecords > numCachedRecordsBeforeProcessing;
     }
 
     private OperatorMetricGroup createOperatorMetricGroup(
@@ -315,6 +320,7 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
             ThrowingConsumer<Watermark, Exception> watermarkConsumer,
             ThrowingConsumer<StreamRecord, Exception> keyContextSetter)
             throws Exception {
+        // we first process the pending mail
         if (!hasRichFunction) {
             elementConsumer.accept(streamRecord);
         } else if (isBlocked[inputIndex]) {
@@ -324,14 +330,25 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
             elementConsumer.accept(streamRecord);
         } else if (!areBroadcastVariablesReady()) {
             dataCacheWriters[inputIndex].addRecord(CacheElement.newRecord(streamRecord.getValue()));
+            numCachedRecords++;
         } else {
             if (hasPendingElements[inputIndex]) {
-                processPendingElementsAndWatermarks(
-                        inputIndex, elementConsumer, watermarkConsumer, keyContextSetter);
-                hasPendingElements[inputIndex] = false;
+                boolean hasRemaining =
+                        processPendingElementsAndWatermarks(
+                                inputIndex,
+                                elementConsumer,
+                                watermarkConsumer,
+                                keyContextSetter,
+                                3);
+                hasPendingElements[inputIndex] = hasRemaining;
             }
-            keyContextSetter.accept(streamRecord);
-            elementConsumer.accept(streamRecord);
+            if (hasPendingElements[inputIndex]) {
+                dataCacheWriters[inputIndex].addRecord(
+                        CacheElement.newRecord(streamRecord.getValue()));
+            } else {
+                keyContextSetter.accept(streamRecord);
+                elementConsumer.accept(streamRecord);
+            }
         }
     }
 
@@ -368,11 +385,22 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
                     CacheElement.newWatermark(watermark.getTimestamp()));
         } else {
             if (hasPendingElements[inputIndex]) {
-                processPendingElementsAndWatermarks(
-                        inputIndex, elementConsumer, watermarkConsumer, keyContextSetter);
-                hasPendingElements[inputIndex] = false;
+                boolean hasRemaining =
+                        processPendingElementsAndWatermarks(
+                                inputIndex,
+                                elementConsumer,
+                                watermarkConsumer,
+                                keyContextSetter,
+                                3);
+                hasPendingElements[inputIndex] = hasRemaining;
             }
-            watermarkConsumer.accept(watermark);
+
+            if (!hasPendingElements[inputIndex]) {
+                dataCacheWriters[inputIndex].addRecord(
+                        CacheElement.newWatermark(watermark.getTimestamp()));
+            } else {
+                watermarkConsumer.accept(watermark);
+            }
         }
     }
 
@@ -398,12 +426,13 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
         if (!hasRichFunction) {
             return;
         }
-        while (!areBroadcastVariablesReady()) {
-            mailboxExecutor.yield();
-        }
         if (hasPendingElements[inputIndex]) {
             processPendingElementsAndWatermarks(
-                    inputIndex, elementConsumer, watermarkConsumer, keyContextSetter);
+                    inputIndex,
+                    elementConsumer,
+                    watermarkConsumer,
+                    keyContextSetter,
+                    Long.MAX_VALUE);
             hasPendingElements[inputIndex] = false;
         }
     }
@@ -417,29 +446,46 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
      * @param watermarkConsumer the consumer function of WaterMark, i.e.,
      *     operator.processWatermark(...).
      * @param keyContextSetter the consumer function of setting key context, i.e.,
-     *     operator.setKeyContext(...).
+     *     operator.setKeyContext(...). return True if has remaining data.
      * @throws Exception possible exception.
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private void processPendingElementsAndWatermarks(
+    private boolean processPendingElementsAndWatermarks(
             int inputIndex,
             ThrowingConsumer<StreamRecord, Exception> elementConsumer,
             ThrowingConsumer<Watermark, Exception> watermarkConsumer,
-            ThrowingConsumer<StreamRecord, Exception> keyContextSetter)
+            ThrowingConsumer<StreamRecord, Exception> keyContextSetter,
+            long batchNum)
             throws Exception {
         List<Segment> pendingSegments = dataCacheWriters[inputIndex].getSegments();
+
+        int numCachedRecordsProcessed = 0;
         if (pendingSegments.size() != 0) {
+
+            List<Segment> toRead = new ArrayList<>();
+
+            for (int i = 0; i < Math.min(batchNum, pendingSegments.size()); i++) {
+                toRead.add(pendingSegments.get(i));
+            }
+
             DataCacheReader dataCacheReader =
                     new DataCacheReader<>(
-                            new CacheElementSerializer<>(inTypeSerializers[inputIndex]),
-                            pendingSegments);
-            while (dataCacheReader.hasNext()) {
+                            new CacheElementSerializer<>(inTypeSerializers[inputIndex]), toRead);
+            int num = 0;
+            while (dataCacheReader.hasNext() && num < batchNum) {
                 CacheElement cacheElement = (CacheElement) dataCacheReader.next();
                 switch (cacheElement.getType()) {
                     case RECORD:
                         StreamRecord record = new StreamRecord(cacheElement.getRecord());
                         keyContextSetter.accept(record);
                         elementConsumer.accept(record);
+                        numCachedRecordsProcessed++;
+                        System.out.println(
+                                "processed cached records, cnt: "
+                                        + numCachedRecordsProcessed
+                                        + " at time: "
+                                        + System.currentTimeMillis());
+                        num++;
                         break;
                     case WATERMARK:
                         watermarkConsumer.accept(new Watermark(cacheElement.getWatermark()));
@@ -449,8 +495,16 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
                                 "Unsupported CacheElement type: " + cacheElement.getType());
                 }
             }
-            dataCacheWriters[inputIndex].clear();
+            for (int i = 0; i < Math.min(batchNum, pendingSegments.size()); i++) {
+                dataCacheWriters[inputIndex].remove(i);
+            }
+
+            //            if (pendingSegments.isEmpty()) {
+            //                dataCacheWriters[inputIndex].clear();
+            //            }
+            return pendingSegments.size() > 0;
         }
+        return false;
     }
 
     @Override
@@ -593,6 +647,12 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
     @SuppressWarnings("unchecked")
     @Override
     public void snapshotState(StateSnapshotContext stateSnapshotContext) throws Exception {
+        System.out.println(
+                getClass().getSimpleName()
+                        + " doing checkpoint with checkpoint id: "
+                        + stateSnapshotContext.getCheckpointId()
+                        + " at time: "
+                        + System.currentTimeMillis());
         if (wrappedOperator instanceof StreamOperatorStateHandler.CheckpointedStreamOperator) {
             ((CheckpointedStreamOperator) wrappedOperator).snapshotState(stateSnapshotContext);
         }
