@@ -426,14 +426,16 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
         if (!hasRichFunction) {
             return;
         }
-        if (hasPendingElements[inputIndex]) {
-            processPendingElementsAndWatermarks(
-                    inputIndex,
-                    elementConsumer,
-                    watermarkConsumer,
-                    keyContextSetter,
-                    Long.MAX_VALUE);
-            hasPendingElements[inputIndex] = false;
+        while (!areBroadcastVariablesReady()) {
+            mailboxExecutor.yield();
+        }
+        while (hasPendingElements[inputIndex]) {
+            boolean hasRemaining =
+                    processPendingElementsAndWatermarks(
+                            inputIndex, elementConsumer, watermarkConsumer, keyContextSetter, 3);
+            hasPendingElements[inputIndex] = hasRemaining;
+            Thread.sleep(1000);
+            mailboxExecutor.yield();
         }
     }
 

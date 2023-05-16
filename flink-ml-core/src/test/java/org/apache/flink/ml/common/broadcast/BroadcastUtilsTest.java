@@ -269,7 +269,7 @@ public class BroadcastUtilsTest {
                         for (int i = 0; i < 10; i++) {
                             ctx.collect(Long.valueOf(i));
                             System.out.println("------------ input Element: " + i);
-                            Thread.sleep(1000);
+                            Thread.sleep(500);
                         }
                     }
 
