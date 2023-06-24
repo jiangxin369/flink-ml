@@ -23,6 +23,12 @@ on:
   pull_request:
     branches: [ '**' ]
   workflow_dispatch:
+    inputs:
+      debug_enabled:
+        type: boolean
+        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+        required: false
+        default: false
 
 jobs:
   python-tests:
@@ -64,5 +70,8 @@ jobs:
           pytest pyflink/ml/feature
           pytest pyflink/ml --ignore=pyflink/ml/feature/tests/
           pytest pyflink/examples
+      - name: Debug with tmate
+        if: ${{ failure() && inputs.debug_enabled }}
+        uses: mxschmitt/action-tmate@v3
 
 
