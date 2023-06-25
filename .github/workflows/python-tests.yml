@@ -38,7 +38,7 @@ jobs:
     strategy:
       matrix:
         os: ['macOS-latest', 'ubuntu-20.04']
-        python-version: ['3.7.16', '3.8']
+        python-version: ['3.7']
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -49,7 +49,8 @@ jobs:
       - name: Build
         run: mvn clean install -DskipTests --no-transfer-progress
       - name: Install python
-        uses: actions/setup-python@v2
+        run: rm -rf $RUNNER_TOOL_CACHE/Python/3.7.17
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
