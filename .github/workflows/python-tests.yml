@@ -48,8 +48,8 @@ jobs:
           java-version: 1.8
       - name: Build
         run: mvn clean install -DskipTests --no-transfer-progress
+      - run: rm -rf $RUNNER_TOOL_CACHE/Python/3.7.17
       - name: Install python
-        run: rm -rf $RUNNER_TOOL_CACHE/Python/3.7.17
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
