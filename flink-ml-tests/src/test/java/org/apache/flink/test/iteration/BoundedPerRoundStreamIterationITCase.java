@@ -148,28 +148,30 @@ public class BoundedPerRoundStreamIterationITCase extends TestLogger {
 
     @Test
     public void testPerRoundIterationWithState() throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setParallelism(1);
-        DataStream<Long> broadcastStream = env.fromElements(1L);
-        DataStream<Long> inputStream = env.fromElements(1L);
-        DataStreamList outputStream =
-                Iterations.iterateBoundedStreamsUntilTermination(
-                        DataStreamList.of(inputStream),
-                        ReplayableDataStreamList.replay(broadcastStream),
-                        IterationConfig.newBuilder()
-                                .setOperatorLifeCycle(OperatorLifeCycle.PER_ROUND)
-                                .build(),
-                        new PerRoundIterationBodyWithState());
+        for (int i = 0; i < 500; i++) {
+            StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+            env.setParallelism(1);
+            DataStream<Long> broadcastStream = env.fromElements(1L);
+            DataStream<Long> inputStream = env.fromElements(1L);
+            DataStreamList outputStream =
+                    Iterations.iterateBoundedStreamsUntilTermination(
+                            DataStreamList.of(inputStream),
+                            ReplayableDataStreamList.replay(broadcastStream),
+                            IterationConfig.newBuilder()
+                                    .setOperatorLifeCycle(OperatorLifeCycle.PER_ROUND)
+                                    .build(),
+                            new PerRoundIterationBodyWithState());
 
-        outputStream.<Long>get(0).addSink(new LongSink(collectedOutputs));
-        JobGraph jobGraph = env.getStreamGraph().getJobGraph();
-        miniCluster.executeJobBlocking(jobGraph);
+            outputStream.<Long>get(0).addSink(new LongSink(collectedOutputs));
+            JobGraph jobGraph = env.getStreamGraph().getJobGraph();
+            miniCluster.executeJobBlocking(jobGraph);
 
-        List<Long> result = new ArrayList<>(3);
-        collectedOutputs.get().drainTo(result);
-        assertEquals(3, result.size());
-        for (long value : result) {
-            assertEquals(1L, value);
+            List<Long> result = new ArrayList<>(3);
+            collectedOutputs.get().drainTo(result);
+            assertEquals(3, result.size());
+            for (long value : result) {
+                assertEquals(1L, value);
+            }
         }
     }
 
