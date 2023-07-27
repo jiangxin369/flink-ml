@@ -19,13 +19,20 @@
 package org.apache.flink.ml.classification;
 
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.api.common.typeutils.base.IntSerializer;
+import org.apache.flink.core.memory.DataInputDeserializer;
+import org.apache.flink.core.memory.DataInputViewStreamWrapper;
+import org.apache.flink.core.memory.DataOutputSerializer;
+import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
 import org.apache.flink.iteration.IterationBodyResult;
 import org.apache.flink.iteration.IterationConfig;
 import org.apache.flink.iteration.IterationListener;
+import org.apache.flink.iteration.IterationRecord;
 import org.apache.flink.iteration.Iterations;
 import org.apache.flink.iteration.ReplayableDataStreamList;
+import org.apache.flink.iteration.typeinfo.IterationRecordSerializer;
 import org.apache.flink.ml.common.iteration.TerminateOnMaxIter;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
@@ -38,10 +45,56 @@ import org.apache.flink.util.Collector;
 
 import org.junit.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.Collections;
 
 /** */
 public class FeedbackCacheTest {
+
+    @Test
+    public void testSerializing() throws IOException {
+
+        int value = Integer.MAX_VALUE + 1;
+        System.out.println((byte) (value));
+
+        System.out.println((byte) Integer.MIN_VALUE);
+
+        System.out.println(0x7F);
+
+        DataOutputSerializer output = new DataOutputSerializer(256);
+        IterationRecord<Integer> record =
+                IterationRecord.newEpochWatermark(Integer.MAX_VALUE + 1, "sender");
+        IterationRecordSerializer<Integer> serializer =
+                new IterationRecordSerializer<>(IntSerializer.INSTANCE);
+        serializer.serialize(record, output);
+
+        DataInputDeserializer input = new DataInputDeserializer(output.wrapAsByteBuffer());
+
+        IterationRecord<Integer> deserializedRecord = serializer.deserialize(input);
+        System.out.println(deserializedRecord);
+    }
+
+    @Test
+    public void testSerializing2() throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DataOutputViewStreamWrapper outputViewStreamWrapper = new DataOutputViewStreamWrapper(baos);
+
+        IterationRecord<Integer> record =
+                IterationRecord.newEpochWatermark(Integer.MAX_VALUE + 1, "sender");
+        IterationRecordSerializer<Integer> serializer =
+                new IterationRecordSerializer<>(IntSerializer.INSTANCE);
+        serializer.serialize(record, outputViewStreamWrapper);
+
+        DataInputViewStreamWrapper inputViewStreamWrapper =
+                new DataInputViewStreamWrapper(new ByteArrayInputStream(baos.toByteArray()));
+
+        IterationRecord<Integer> deserializedRecord =
+                serializer.deserialize(inputViewStreamWrapper);
+        System.out.println(deserializedRecord);
+    }
+
     @Test
     public void testIteration() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();

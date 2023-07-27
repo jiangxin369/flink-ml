@@ -24,6 +24,7 @@ import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.iteration.IterationID;
@@ -38,6 +39,8 @@ import org.apache.flink.iteration.operator.event.CoordinatorCheckpointEvent;
 import org.apache.flink.iteration.operator.event.GloballyAlignedEvent;
 import org.apache.flink.iteration.operator.event.SubtaskAlignedEvent;
 import org.apache.flink.iteration.operator.event.TerminatingOnInitializeEvent;
+import org.apache.flink.iteration.operator.feedback.SpillableFeedbackChannel;
+import org.apache.flink.iteration.operator.feedback.SpillableFeedbackChannelBroker;
 import org.apache.flink.iteration.operator.headprocessor.HeadOperatorRecordProcessor;
 import org.apache.flink.iteration.operator.headprocessor.HeadOperatorState;
 import org.apache.flink.iteration.operator.headprocessor.RegularHeadOperatorRecordProcessor;
@@ -46,6 +49,7 @@ import org.apache.flink.iteration.typeinfo.IterationRecordTypeInfo;
 import org.apache.flink.iteration.utils.ReflectionUtils;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.event.AbstractEvent;
+import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
@@ -63,8 +67,6 @@ import org.apache.flink.runtime.operators.coordination.OperatorEventHandler;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StatePartitionStreamProvider;
 import org.apache.flink.runtime.state.StateSnapshotContext;
-import org.apache.flink.statefun.flink.core.feedback.FeedbackChannel;
-import org.apache.flink.statefun.flink.core.feedback.FeedbackChannelBroker;
 import org.apache.flink.statefun.flink.core.feedback.FeedbackConsumer;
 import org.apache.flink.statefun.flink.core.feedback.FeedbackKey;
 import org.apache.flink.statefun.flink.core.feedback.SubtaskFeedbackKey;
@@ -154,6 +156,8 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
     private ListState<HeadOperatorState> processorState;
 
     private Checkpoints<IterationRecord<?>> checkpoints;
+
+    private int num = 0;
 
     public HeadOperator(
             IterationID iterationId,
@@ -334,6 +338,7 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
         }
 
         checkpoints.append(iterationRecord.getValue());
+        System.out.println("I'm processing Record: " + iterationRecord);
         boolean terminated = recordProcessor.processFeedbackElement(iterationRecord);
         if (terminated) {
             checkState(status == HeadOperatorStatus.TERMINATING);
@@ -411,6 +416,7 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
 
         // By here we could step into the normal loop.
         while (status != HeadOperatorStatus.TERMINATED) {
+            System.out.println("yielding");
             mailboxExecutor.yield();
         }
     }
@@ -429,8 +435,15 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
                 OperatorUtils.createFeedbackKey(iterationId, feedbackIndex);
         SubtaskFeedbackKey<StreamRecord<IterationRecord<?>>> key =
                 feedbackKey.withSubTaskIndex(indexOfThisSubtask, attemptNum);
-        FeedbackChannelBroker broker = FeedbackChannelBroker.get();
-        FeedbackChannel<StreamRecord<IterationRecord<?>>> channel = broker.getChannel(key);
+        SpillableFeedbackChannelBroker broker = SpillableFeedbackChannelBroker.get();
+
+        final IOManager ioManager = getContainingTask().getEnvironment().getIOManager();
+        TypeSerializer<StreamRecord<IterationRecord<?>>> serializer =
+                getOperatorConfig().getTypeSerializerIn(0, this.getUserCodeClassloader());
+
+        SpillableFeedbackChannel<StreamRecord<IterationRecord<?>>> channel = broker.getChannel(key);
+        channel.initialize(ioManager, 1_000_000, serializer);
+
         OperatorUtils.registerFeedbackConsumer(channel, this, mailboxExecutor);
     }
 

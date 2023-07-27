@@ -50,6 +50,7 @@ public class TerminatingHeadOperatorRecordProcessor implements HeadOperatorRecor
 
     @Override
     public boolean processFeedbackElement(StreamRecord<IterationRecord<?>> record) {
+        System.out.println("Enter terminating HeadOperator Processor");
         if (record.getValue().getType() == IterationRecord.Type.EPOCH_WATERMARK) {
             return record.getValue().getEpoch() == Integer.MAX_VALUE + 1;
         }

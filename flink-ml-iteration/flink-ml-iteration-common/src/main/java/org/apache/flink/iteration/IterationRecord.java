@@ -56,6 +56,10 @@ public class IterationRecord<T> implements Cloneable {
     }
 
     public static <T> IterationRecord<T> newEpochWatermark(int epoch, String sender) {
+        if (epoch == 0) {
+            System.out.println("Sending Epoch Watermark : " + epoch);
+        }
+
         return new IterationRecord<>(Type.EPOCH_WATERMARK, epoch, null, sender, 0);
     }
 

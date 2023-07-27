@@ -106,6 +106,9 @@ public class IterationRecordSerializer<T> extends TypeSerializer<IterationRecord
     @Override
     public void serialize(IterationRecord<T> record, DataOutputView target) throws IOException {
         target.writeByte((byte) record.getType().ordinal());
+        if (record.getEpoch() == Integer.MAX_VALUE + 1) {
+            System.out.println("Serializing record.getEpoch() ");
+        }
         serializerNumber(record.getEpoch(), target);
         switch (record.getType()) {
             case RECORD:
@@ -172,29 +175,32 @@ public class IterationRecordSerializer<T> extends TypeSerializer<IterationRecord
 
     /** Variant encoding for the epoch. */
     public void serializerNumber(int value, DataOutputView target) throws IOException {
-        if (value <= 0x7F) {
-            target.writeByte((byte) (value));
-        } else {
-            while (value > 0x7F) {
-                target.writeByte((byte) ((value & 0x7F) | 0x80));
-                value >>>= 7;
-            }
-            target.writeByte((byte) (value & 0x7F));
-        }
+        //        if (value <= 0x7F) {
+        //            target.writeByte((byte) (value));
+        //        } else {
+        //            while (value > 0x7F) {
+        //                target.writeByte((byte) ((value & 0x7F) | 0x80));
+        //                value >>>= 7;
+        //            }
+        //            target.writeByte((byte) (value & 0x7F));
+        //        }
+
+        target.writeInt(value);
     }
 
     public int deserializeNumber(DataInputView source) throws IOException {
-        int offset = 0;
-        int value = 0;
-
-        byte next;
-        while ((next = source.readByte()) < 0) {
-            value |= (((long) (next & 0x7f)) << offset);
-            offset += 7;
-        }
-        value |= (((long) next) << offset);
-
-        return value;
+        //        int offset = 0;
+        //        int value = 0;
+        //
+        //        byte next;
+        //        while ((next = source.readByte()) < 0) {
+        //            value |= (((long) (next & 0x7f)) << offset);
+        //            offset += 7;
+        //        }
+        //        value |= (((long) next) << offset);
+        //
+        //        return value;
+        return source.readInt();
     }
 
     @Override

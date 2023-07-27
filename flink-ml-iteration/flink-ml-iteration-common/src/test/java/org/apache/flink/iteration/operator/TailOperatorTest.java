@@ -20,7 +20,6 @@ package org.apache.flink.iteration.operator;
 
 import org.apache.flink.iteration.IterationID;
 import org.apache.flink.iteration.IterationRecord;
-import org.apache.flink.runtime.testutils.DirectScheduledExecutorService;
 import org.apache.flink.statefun.flink.core.feedback.FeedbackChannel;
 import org.apache.flink.statefun.flink.core.feedback.FeedbackChannelBroker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -99,8 +98,9 @@ public class TailOperatorTest extends TestLogger {
                                                 iterationId, feedbackIndex)
                                         .withSubTaskIndex(subtaskIndex, attemptNumber));
         List<StreamRecord<IterationRecord<?>>> iterationRecords = new ArrayList<>();
-        OperatorUtils.registerFeedbackConsumer(
-                feedbackChannel, iterationRecords::add, new DirectScheduledExecutorService());
+        //        OperatorUtils.registerFeedbackConsumer(
+        //                feedbackChannel, iterationRecords::add, new
+        // DirectScheduledExecutorService());
         return iterationRecords;
     }
 }
